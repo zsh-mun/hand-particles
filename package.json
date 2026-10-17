@@ -1,0 +1,9 @@
+{
+  "name": "hand-particles",
+  "private": true,
+  "type": "module",
+  "description": "用手势控制沙尘/星系/水滴粒子的手机网页",
+  "scripts": {
+    "start": "node serve.mjs"
+  }
+}

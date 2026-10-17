@@ -1,0 +1,16 @@
+{
+  "name": "手势粒子 · 张开与闭合",
+  "short_name": "手势粒子",
+  "description": "前置摄像头识别手势开合，驱动沙尘 / 星系 / 水滴粒子聚散",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#05070c",
+  "theme_color": "#05070c",
+  "icons": [
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#05070c" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>手势粒子 · 张开与闭合</title>
+    <link rel="manifest" href="./manifest.json" />
+    <link rel="icon" href="./icon-192.png" />
+    <link rel="apple-touch-icon" href="./icon-180.png" />
+    <style>
+      :root {
+        --accent: #ffcf70;
+        --glass: rgba(16, 20, 30, 0.55);
+        --stroke: rgba(255, 255, 255, 0.14);
+        --text: #eef2f8;
+        --dim: rgba(238, 242, 248, 0.6);
+        --safe-b: env(safe-area-inset-bottom, 0px);
+        --safe-t: env(safe-area-inset-top, 0px);
+      }
+      * {
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #05070c;
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Noto Sans SC",
+          system-ui, sans-serif;
+        overscroll-behavior: none;
+        touch-action: none;
+      }
+
+      #stage {
+        position: fixed;
+        inset: 0;
+        overflow: hidden;
+      }
+      #cam {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transform: scaleX(-1);
+        transition: filter 0.5s ease;
+        background: #05070c;
+      }
+      #cam.back {
+        transform: none;
+      }
+      #wash,
+      #vignette {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+      #vignette {
+        background: radial-gradient(
+          120% 90% at 50% 45%,
+          rgba(0, 0, 0, 0) 42%,
+          rgba(0, 0, 0, 0.42) 78%,
+          rgba(0, 0, 0, 0.72) 100%
+        );
+      }
+      #fx {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+
+      /* ---------- HUD ---------- */
+      .ui {
+        position: fixed;
+        left: 0;
+        right: 0;
+        z-index: 5;
+        transition: opacity 0.45s ease, transform 0.45s ease;
+      }
+      .ui.idle {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #hud {
+        top: calc(var(--safe-t) + 10px);
+        padding: 0 12px;
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+        justify-content: space-between;
+      }
+      .card {
+        background: var(--glass);
+        border: 1px solid var(--stroke);
+        border-radius: 14px;
+        backdrop-filter: blur(14px) saturate(1.2);
+        -webkit-backdrop-filter: blur(14px) saturate(1.2);
+      }
+      #status {
+        padding: 7px 11px;
+        font-size: 11.5px;
+        line-height: 1.5;
+        color: var(--dim);
+        font-variant-numeric: tabular-nums;
+      }
+      #status b {
+        color: var(--text);
+        font-weight: 600;
+      }
+      #meters {
+        display: flex;
+        gap: 3px;
+        margin-top: 5px;
+      }
+      .meter {
+        width: 46px;
+        height: 4px;
+        border-radius: 3px;
+        background: rgba(255, 255, 255, 0.16);
+        overflow: hidden;
+      }
+      .meter > i {
+        display: block;
+        height: 100%;
+        width: 0%;
+        border-radius: 3px;
+        background: var(--accent);
+        transition: background 0.4s;
+      }
+      #hint {
+        padding: 7px 11px;
+        font-size: 11.5px;
+        color: var(--dim);
+        text-align: right;
+        max-width: 44vw;
+        overflow: hidden;
+      }
+
+      /* ---------- 底部模式条 ---------- */
+      #dock {
+        bottom: 0;
+        padding: 10px 12px calc(10px + var(--safe-b));
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        justify-content: center;
+        background: linear-gradient(to top, rgba(4, 6, 11, 0.72), rgba(4, 6, 11, 0));
+      }
+      .chips {
+        display: flex;
+        gap: 6px;
+        padding: 5px;
+        border-radius: 999px;
+        overflow-x: auto;
+        scrollbar-width: none;
+      }
+      .chips::-webkit-scrollbar {
+        display: none;
+      }
+      .chip {
+        appearance: none;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--dim);
+        font: inherit;
+        font-size: 13px;
+        padding: 8px 14px;
+        border-radius: 999px;
+        white-space: nowrap;
+        transition: color 0.25s, background 0.25s, border-color 0.25s;
+      }
+      .chip.on {
+        color: #0b0d12;
+        background: var(--accent);
+        font-weight: 600;
+      }
+      .icon-btn {
+        appearance: none;
+        width: 42px;
+        height: 42px;
+        flex: 0 0 42px;
+        border-radius: 50%;
+        border: 1px solid var(--stroke);
+        background: var(--glass);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        color: var(--text);
+        font-size: 17px;
+        display: grid;
+        place-items: center;
+      }
+      .icon-btn:active {
+        transform: scale(0.94);
+      }
+
+      /* ---------- 设置面板 ---------- */
+      #panel {
+        position: fixed;
+        left: 10px;
+        right: 10px;
+        bottom: calc(76px + var(--safe-b));
+        z-index: 6;
+        padding: 14px 14px 6px;
+        border-radius: 20px;
+        background: rgba(12, 16, 24, 0.82);
+        border: 1px solid var(--stroke);
+        backdrop-filter: blur(20px) saturate(1.3);
+        -webkit-backdrop-filter: blur(20px) saturate(1.3);
+        transform: translateY(14px) scale(0.98);
+        opacity: 0;
+        /* 只用 opacity 隐藏不够：backdrop-filter 在个别渲染路径上仍会留下痕迹 */
+        visibility: hidden;
+        pointer-events: none;
+        transition: opacity 0.28s ease, transform 0.28s ease, visibility 0.28s;
+        max-height: 62vh;
+        overflow-y: auto;
+      }
+      #panel.open {
+        opacity: 1;
+        visibility: visible;
+        transform: none;
+        pointer-events: auto;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 2px;
+        font-size: 13px;
+      }
+      .row > label {
+        flex: 1;
+        color: var(--dim);
+      }
+      .row input[type="range"] {
+        flex: 1.2;
+        appearance: none;
+        height: 26px;
+        background: transparent;
+      }
+      .row input[type="range"]::-webkit-slider-runnable-track {
+        height: 4px;
+        border-radius: 3px;
+        background: rgba(255, 255, 255, 0.2);
+      }
+      .row input[type="range"]::-webkit-slider-thumb {
+        appearance: none;
+        width: 20px;
+        height: 20px;
+        margin-top: -8px;
+        border-radius: 50%;
+        background: var(--accent);
+        border: none;
+      }
+      .row output {
+        width: 42px;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        color: var(--text);
+      }
+      .seg {
+        display: flex;
+        gap: 4px;
+        flex: 1.2;
+        background: rgba(255, 255, 255, 0.07);
+        border-radius: 12px;
+        padding: 4px;
+      }
+      .seg button {
+        flex: 1;
+        appearance: none;
+        border: none;
+        background: transparent;
+        color: var(--dim);
+        font: inherit;
+        font-size: 12px;
+        padding: 7px 4px;
+        border-radius: 9px;
+      }
+      .seg button.on {
+        background: rgba(255, 255, 255, 0.16);
+        color: var(--text);
+      }
+      .switch {
+        flex: 0 0 auto;
+        width: 50px;
+        height: 29px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.16);
+        border: none;
+        position: relative;
+        transition: background 0.25s;
+      }
+      .switch::after {
+        content: "";
+        position: absolute;
+        top: 3px;
+        left: 3px;
+        width: 23px;
+        height: 23px;
+        border-radius: 50%;
+        background: #fff;
+        transition: transform 0.25s;
+      }
+      .switch.on {
+        background: var(--accent);
+      }
+      .switch.on::after {
+        transform: translateX(21px);
+      }
+      .hintline {
+        font-size: 11px;
+        color: rgba(238, 242, 248, 0.42);
+        padding: 8px 2px 12px;
+        line-height: 1.6;
+      }
+
+      /* ---------- 启动页 ---------- */
+      #gate {
+        position: fixed;
+        inset: 0;
+        z-index: 20;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        padding: 26px;
+        text-align: center;
+        background: radial-gradient(90% 60% at 50% 30%, #16203a 0%, #06080e 62%, #04050a 100%);
+        transition: opacity 0.5s ease, visibility 0.5s;
+      }
+      #gate.hide {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+      }
+      #gate h1 {
+        margin: 0;
+        font-size: 25px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+      #gate p {
+        margin: 0;
+        font-size: 13.5px;
+        line-height: 1.75;
+        color: var(--dim);
+        max-width: 30em;
+      }
+      #gate .dots {
+        display: flex;
+        gap: 7px;
+        margin: 2px 0 2px;
+      }
+      #gate .dots span {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--accent);
+        opacity: 0.35;
+        animation: pulse 1.6s infinite;
+      }
+      #gate .dots span:nth-child(2) {
+        animation-delay: 0.2s;
+      }
+      #gate .dots span:nth-child(3) {
+        animation-delay: 0.4s;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 0.28;
+          transform: translateY(0);
+        }
+        50% {
+          opacity: 1;
+          transform: translateY(-4px);
+        }
+      }
+      .btn {
+        appearance: none;
+        border: none;
+        font: inherit;
+        font-size: 16px;
+        font-weight: 600;
+        color: #0b0d12;
+        background: var(--accent);
+        padding: 15px 40px;
+        border-radius: 999px;
+        box-shadow: 0 12px 34px -14px var(--accent);
+      }
+      .btn:active {
+        transform: scale(0.97);
+      }
+      .btn.ghost {
+        background: transparent;
+        color: var(--text);
+        border: 1px solid var(--stroke);
+        box-shadow: none;
+        font-weight: 500;
+        font-size: 14px;
+        padding: 12px 26px;
+      }
+      #prog {
+        width: min(280px, 70vw);
+        height: 3px;
+        border-radius: 3px;
+        background: rgba(255, 255, 255, 0.14);
+        overflow: hidden;
+        opacity: 0;
+        transition: opacity 0.3s;
+      }
+      #prog.on {
+        opacity: 1;
+      }
+      #prog > i {
+        display: block;
+        height: 100%;
+        width: 0%;
+        background: var(--accent);
+        transition: width 0.2s;
+      }
+      #err {
+        font-size: 12.5px;
+        line-height: 1.7;
+        color: #ffb4b4;
+        max-width: 30em;
+        white-space: pre-wrap;
+      }
+      #selftest {
+        position: fixed;
+        left: 0;
+        top: 0;
+        z-index: 40;
+        font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace;
+        color: #9ef0a0;
+        white-space: pre-wrap;
+        padding: 8px;
+        pointer-events: none;
+      }
+      /* ?bare=1 纯净模式：隐藏所有 UI 叠层，方便录屏 / 排查渲染问题 */
+      body.bare #wash,
+      body.bare #vignette,
+      body.bare #hud,
+      body.bare #dock,
+      body.bare #panel,
+      body.bare #gate {
+        display: none !important;
+      }
+      @media (min-width: 720px) {
+        #panel {
+          left: auto;
+          right: 10px;
+          width: 340px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stage">
+      <video id="cam" playsinline muted autoplay></video>
+      <div id="wash"></div>
+      <canvas id="fx"></canvas>
+      <div id="vignette"></div>
+    </div>
+
+    <div id="hud" class="ui">
+      <div id="status" class="card">
+        <div>正在准备…</div>
+        <div id="meters">
+          <div class="meter"><i></i></div>
+          <div class="meter"><i></i></div>
+        </div>
+      </div>
+      <div id="hint" class="card">张开 → 炸开<br />握拳 → 收拢</div>
+    </div>
+
+    <div id="dock" class="ui">
+      <div class="icon-btn" id="btnPanel" title="设置">⚙</div>
+      <div class="chips card" id="chips"></div>
+    </div>
+
+    <div id="panel">
+      <div class="row">
+        <label for="gain">手势灵敏度</label>
+        <input id="gain" type="range" min="0.4" max="2.4" step="0.05" />
+        <output id="gainV">1.00</output>
+      </div>
+      <div class="row">
+        <label for="density">粒子数量</label>
+        <input id="density" type="range" min="0.25" max="2" step="0.05" />
+        <output id="densityV">1.00</output>
+      </div>
+      <div class="row">
+        <label for="dim">背景暗度</label>
+        <input id="dim" type="range" min="0" max="1" step="0.02" />
+        <output id="dimV">0.50</output>
+      </div>
+      <div class="row">
+        <label>流畅度</label>
+        <div class="seg" id="quality">
+          <button data-v="low">省电</button><button data-v="balanced">均衡</button><button data-v="high">流畅</button>
+        </div>
+      </div>
+      <div class="row">
+        <label>摄像头</label>
+        <div class="seg" id="facing">
+          <button data-v="user">前置</button><button data-v="environment">后置</button>
+        </div>
+      </div>
+      <div class="row">
+        <label>显示手部骨架</label>
+        <button class="switch" id="skel"></button>
+      </div>
+      <div class="row">
+        <label>镜像画面</label>
+        <button class="switch on" id="mirror"></button>
+      </div>
+      <div class="hintline" id="diag"></div>
+    </div>
+
+    <div id="gate">
+      <div class="dots"><span></span><span></span><span></span></div>
+      <h1>手势粒子</h1>
+      <p>
+        用前置摄像头识别你的手。张开手指，沙尘 / 星系 / 水滴就向外炸开；握紧拳头，它们又被吸回掌心。<br />
+        伸出两只手，还能把粒子拉成一座桥。
+      </p>
+      <div id="prog"><i></i></div>
+      <button class="btn" id="btnStart">开启摄像头</button>
+      <button class="btn ghost" id="btnDemo">先看看效果（演示模式）</button>
+      <div id="err"></div>
+    </div>
+    <div id="selftest"></div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
